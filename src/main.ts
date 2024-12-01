@@ -1,21 +1,51 @@
+// import { NestFactory } from '@nestjs/core';
+
+// import helmet from 'helmet';
+
+// import { AppModule } from './app.module';
+
+// const port = process.env.PORT || 4000;
+
+// async function bootstrap() {
+//   const app = await NestFactory.create(AppModule);
+
+//   app.enableCors({
+//     origin: (req, callback) => callback(null, true),
+//   });
+//   app.use(helmet());
+
+//   await app.listen(port);
+// }
+// bootstrap().then(() => {
+//   console.log('App is running on %s port', port);
+// });
+
+
 import { NestFactory } from '@nestjs/core';
-
-import helmet from 'helmet';
-
+import { Context, Handler } from 'aws-lambda';
+import express from 'express';
+import { ExpressAdapter } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
+import { SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
+import serverlessExpress from '@vendia/serverless-express';
 
-const port = process.env.PORT || 4000;
+let cachedServer: Handler;
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  if (!cachedServer) {
+    const nestApp = await NestFactory.create(AppModule);
+    nestApp.enableCors();
+    await nestApp.init();
 
-  app.enableCors({
-    origin: (req, callback) => callback(null, true),
-  });
-  app.use(helmet());
+    const expressApp = nestApp.getHttpAdapter().getInstance();
+    cachedServer = serverlessExpress({ app: expressApp });
+    console.log("server run");
+  }
 
-  await app.listen(port);
+  return cachedServer;
 }
-bootstrap().then(() => {
-  console.log('App is running on %s port', port);
-});
+
+export const handler = async (event: any, context: Context, callback: any) => {
+  const server = await bootstrap();
+  return server(event, context, callback);
+};
